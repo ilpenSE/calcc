@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stddef.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -61,11 +62,11 @@ void cal_report_error(const Calculator *self, size_t offset, size_t length, cons
   fprintf(stderr, " |     "SV_FMT"\n", SV_ARG(self->expr));
   fprintf(stderr, " |     \e[0;36m%*c", cursor, '^');
 
-  if (length <= 1) printf("\e[0m");
+  if (length <= 1) fprintf(stderr, "\e[0m");
   for (size_t i = 1; i < length; i++) {
     fputc('~', stderr);
   }
-  printf("\e[0m");
+  fprintf(stderr, "\e[0m");
 
   fputc('\n', stderr);
 }
@@ -132,14 +133,18 @@ double parse_number(Calculator *self)
 {
   sv_trim_left(&self->cur);
   double r = 0.0;
+  double sign = 1.0;
   bool is_integer = true; // integer / decimal part
 
   size_t i = 0;
   size_t dot = 0;
+  size_t digits = 0;
+
   for (; i < self->cur.count; i++) {
     char c = sv_at(&self->cur, i);
     if (c == '-' && i == 0) {
-      r *= -1.0;
+      sign = -1.0;
+      continue;
     }
 
     if (c == '.') {
@@ -153,22 +158,22 @@ double parse_number(Calculator *self)
     }
 
     if (c >= '0' && c <= '9') {
+      digits++;
       if (is_integer) {
-        r *= pow(10.0, i+1);
-        r += (int)(c - '0');
+        r = r * 10.0 + (c - '0');
       } else {
         r += (double)(c - '0') / pow(10.0, i - dot);
       }
     } else break;
   }
 
-  if (sv_at(&self->cur, i - 1) == '.') {
+  if (digits == 0 && (i > 0 && sv_at(&self->cur, i - 1) == '.')) {
     cal_report_error(self, i - 1, 1, "expected at least 1 digit after '.'");
     return (self->nerr++, 0.0);
   }
 
   sv_chop_left(&self->cur, i);
-  return r;
+  return sign * r;
 }
 
 int main(void)
