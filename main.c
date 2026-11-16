@@ -7,10 +7,16 @@
 #define STR_IMPLEMENTATION
 #include "str.h"
 
+// Famous readline() function only works in GNU/Linux
+// If this doesn't defined it'll use fgets() instead.
+#ifdef USE_READLINE
+#include <readline/readline.h>
+#include <readline/history.h>
+#endif
+
 // You can change these
-static const char *repl_input = ">>>";
-static const char *repl_output = "<<<";
-#define MAX_EXPR_SIZE 1024
+#define REPL_INPUT  ">>> "
+#define REPL_OUTPUT "<<< "
 
 #ifdef __GNUC__ // GCC, Clang, ICC
 #define UNREACHABLE_INTR() (__builtin_unreachable())
@@ -176,27 +182,45 @@ double parse_number(Calculator *self)
   return sign * r;
 }
 
+bool repl_body(char *line)
+{
+  StringView sv = SV(line);
+  sv_trim(&sv);
+  putchar('\n');
+
+  if (sv_eq(sv, SVL("quit")) ||
+      sv_eq(sv, SVL("q"))    ||
+      sv_eq(sv, SVL("exit"))) return false;
+
+  Calculator cal = {.expr=sv, .cur=sv};
+  double res = parse_expr(&cal);
+  if (cal.nerr > 0) {
+    fprintf(stderr, "total errors: \e[0;31m%zu\e[0m\n", cal.nerr);
+  } else {
+    printf(REPL_OUTPUT"%lf\n", res);
+  }
+  putchar('\n');
+  return true;
+}
+
 int main(void)
 {
-  printf("%s ", repl_input);
-  char buf[MAX_EXPR_SIZE];
-  while (fgets(buf, sizeof(buf), stdin) != NULL) {
-    StringView sv = SV(buf);
-    sv_trim(&sv);
-    putchar('\n');
-
-    if (sv_eq(sv, SVL("quit")) ||
-        sv_eq(sv, SVL("q"))    ||
-        sv_eq(sv, SVL("exit"))) break;
-
-    Calculator cal = {.expr=sv, .cur=sv};
-    double res = parse_expr(&cal);
-    if (cal.nerr > 0) {
-      printf("total errors: \e[0;31m%zu\e[0m\n", cal.nerr);
-    } else {
-      printf("%s %lf\n", repl_output, res);
-    }
-
-    printf("\n%s ", repl_input);
+#ifdef USE_READLINE
+  char *line;
+  while ((line = readline(REPL_INPUT)) != NULL) {
+    if (*line) add_history(line);
+    if (!repl_body(line)) break;
+    free(line);
   }
+
+#else
+  bool eof = true;
+  printf(REPL_INPUT);
+  char buf[1024];
+  while (fgets(buf, sizeof(buf), stdin) != NULL) {
+    if (!repl_body(buf)) { eof = false; break; }
+    printf(REPL_INPUT);
+  }
+  if (eof) putchar('\n');
+#endif
 }
